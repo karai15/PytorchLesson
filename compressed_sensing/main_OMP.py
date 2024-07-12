@@ -1,7 +1,9 @@
 import matplotlib.pyplot as plt
 import numpy as np
-import scipy
 import time
+import os
+from joblib import Parallel, delayed
+import pickle
 
 
 def main():
@@ -9,52 +11,148 @@ def main():
     # Model : y = Ax + Noise
     # y(N), A(N,M), x(M) (SMV)
     # L : num of nonzero elements
-    ########################]
+    ########################
 
     """
-    次回：ループ作って，データ改修
+    ・SBL
+    ・フレーム変えた場合
     """
+
+    # Param
+    opt_multi_process = 0
+    param = {
+        "save_path": "./data/CS/TEST/",
+        "load_path_frame": "./data/Frame/TEST/",
+        "filename_frame": "frame.pickle",
+        "opt_frame": "Gauss",  # "Gauss", "Minimized", "SIDCO"
+        "method": "OMP",  # "OMP", "Oracle"
+        "N": 64,
+        "M": 256,
+        "L": 25,
+    }
+    snr_list = np.linspace(0, 40, 4)  # (start, stop, num)
+    # snr_list = np.array([20000])  # (start, stop, num)
+    rep_list = np.arange(10)
+    my_mkdir(param["save_path"])
+
+    # Run
+    if opt_multi_process == 1:  # multi_process
+        print("run sim in multi_process")
+        data = Parallel(n_jobs=-1)(
+            [delayed(run_OMP)(param, snr, n_rep) for n_rep in rep_list for snr in snr_list]
+        )
+    else:  # single_process
+        data = []
+        for n_rep in rep_list:
+            for snr in snr_list:
+                _data = run_OMP(param, snr, n_rep)
+                data.append(_data)
+
+    ################
+    # Convert to Numpy format
+    N_rep = len(rep_list)
+    N_snr = len(snr_list)
+    NMSE_x = np.zeros((N_rep, N_snr), dtype=np.float64)
+    cnt = 0
+    for n_rep, _ in enumerate(rep_list):
+        for n_snr, snr in enumerate(snr_list):
+            NMSE_x[n_rep, n_snr] = data[cnt]
+            cnt = cnt + 1
+    mean_NMSE = np.mean(NMSE_x, axis=0)
+    save_path = param["save_path"]
+    ################
+
+    # ################
+    # NMSE_vs_SNR
+    x = snr_list
+    y = 10 * np.log10(mean_NMSE)
+    plot_csv(x, y, save_path, filename="NMSE_vs_SNR")
+    # CDF
+    n_snr = -1
+    plot_csv_cdf(10 * np.log10(NMSE_x[:, n_snr]), save_path, filename="CDF_NMSE")
+    # ################
+
+
+def plot_csv(x, y, save_path, filename):
+    # plt
+    plt.figure()
+    plt.plot(x, y, "x-")
+    plt.savefig(os.path.join(save_path, filename + ".jpeg"))
+    # csv
+    data_csv = np.stack([x, y], 1)
+    np.savetxt(os.path.join(save_path, filename + ".csv"), data_csv, delimiter=',')  # (x, y)
+
+
+def plot_csv_cdf(data, save_path, filename):
+    N_bins = 100
+    h_weight = np.ones(len(data)) / len(data)
+    cdf = plt.hist(data, bins=N_bins, weights=h_weight, cumulative=True, histtype='step')  # (y, x)
+    y = cdf[0][0:N_bins]
+    x = (cdf[1][0:N_bins])
+    plot_csv(x, y, save_path, filename)
+
+
+def run_OMP(param, snr, n_rep):
+    np.random.seed(seed=n_rep)
+
+    # param
+    method = param["method"]
+    N = param["N"]
+    M = param["M"]
+    L = param["L"]
+    opt_frame = param["opt_frame"]
 
     ########################
     # Generate Model
     ########################
-    np.random.seed(seed=0)
-    N, M, L = 250, 500, 25
-    snr = 20
-
-
     pn = 10 ** (-snr / 10)
-    A_frame = np.random.randn(N, M) + 1j * np.random.randn(N, M)
-    id_nonzero = np.random.randint(0, M - 1, L)
+    if opt_frame == "Gauss":
+        A_frame = (np.random.randn(N, M) + 1j * np.random.randn(N, M)) / np.sqrt(2)
+    elif opt_frame == "Minimized":
+        fp = os.path.join(param["load_path_frame"], param["filename_frame"])
+        with open(fp, "rb") as f:
+            A_frame = pickle.load(f)
+            print("load data: " + fp)
+    A_frame = (A_frame / np.sqrt(np.sum(np.abs(A_frame) ** 2))) * np.sqrt(N * M)  # 平均電力を1に制約
+    # id_nonzero = np.random.randint(0, M - 1, L)
+    id_nonzero = np.random.choice(range(M), L, replace=False)
+
     x = np.zeros(M, dtype=np.complex128)
     x[id_nonzero] = (np.random.randn(L) + 1j * np.random.randn(L)) / np.sqrt(2 * L)
-    Noise = (np.random.randn(N) + 1j * np.random.randn(N)) / np.sqrt(2) * pn
+    Noise = (np.random.randn(N) + 1j * np.random.randn(N)) / np.sqrt(2) * np.sqrt(pn)
     y = A_frame @ x + Noise
 
     ########################
     # Estimate X
     ########################
-    # SOMP
-    t1 = time.time()
-    x_omp, S = OMP(y, A_frame, L=L)
-    t2 = time.time()
+    if method == "OMP":
+        x_est, S = OMP(y, A_frame, L=L)
+
+    elif method == "Oracle":
+        A_true = A_frame[:, id_nonzero]
+        # _x_est = np.linalg.inv(np.conj(A_true).T @ A_true + pn * np.eye(L)) @ np.conj(A_true).T @ y
+        _x_est = np.linalg.pinv(A_true) @ y
+        x_est = np.zeros(M, dtype=np.complex128)
+        x_est[id_nonzero] = _x_est
+
 
     ########################
     # Evaluate NMSE
     ########################
-    NMSE_y_omp = 10 * np.log10(NMSE(y, A_frame @ x_omp))
-    NMSE_x_omp = 10 * np.log10(NMSE(x, x_omp))
-    print(f"(OMP)     NMSE(x) = {NMSE_x_omp} [dB], NMSE(y) = {NMSE_y_omp} [dB], Time = {t2-t1} [s]")
+    NMSE_x = NMSE(x, x_est)
+    print(f"NMSE(x) = {10 * np.log10(NMSE_x)} [dB]")
 
-    ########################
-    # PLOT (|X| vs index)
-    ########################
-    plt.plot(np.abs(x), "o", label="True")
-    plt.plot(np.abs(x_omp), "^", label="OMP")
-    plt.xlabel("index of x")
-    plt.ylabel("|x|^2")
-    plt.legend()
-    plt.show()
+    # ########################
+    # # PLOT (|X| vs index)
+    # ########################
+    # plt.plot(np.abs(x), "o", label="True")
+    # plt.plot(np.abs(x_omp), "^", label="OMP")
+    # plt.xlabel("index of x")
+    # plt.ylabel("|x|^2")
+    # plt.legend()
+    # plt.show()
+
+    return NMSE_x
 
 
 def NMSE(X, X_hat):
@@ -88,7 +186,7 @@ def OMP(y, A, L):
     for l in range(L):
         # print("OMP : iter = ", m)
         # calc metric
-        err = rr - np.abs(np.conj(A_res[:, S == 0]).T @ r) ** 2 # (M, 1)
+        err = rr - np.abs(np.conj(A_res[:, S == 0]).T @ r) ** 2  # (M, 1)
 
         # update support
         ndx = np.where(S == 0)[0]
@@ -107,6 +205,10 @@ def OMP(y, A, L):
 
     return x, S
 
+
+def my_mkdir(path):
+    if not os.path.isdir(path):
+        os.makedirs(path)
 
 
 main()
