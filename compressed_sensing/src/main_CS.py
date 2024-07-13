@@ -4,6 +4,7 @@ import time
 import os
 from joblib import Parallel, delayed
 import pickle
+import scipy.io
 
 
 def main():
@@ -16,36 +17,38 @@ def main():
     """
     ・SBL
     ・フレーム変えた場合
+    ・
     """
 
     # Param
     opt_multi_process = 0
     param = {
-        "save_path": "./data/CS/TEST/",
-        "load_path_frame": "./data/Frame/TEST/",
+        "save_path": "../data/CS/N64M256L25_Oracle_Minimized/",  # N64M256L25_Oracle_Gauss
+        "load_path_frame": "../data/Frame/N64_M256_Niter1000/",
         "filename_frame": "frame.pickle",
-        "opt_frame": "Gauss",  # "Gauss", "Minimized", "SIDCO"
-        "method": "OMP",  # "OMP", "Oracle"
+        "opt_frame": "SIDCO",  # "Gauss", "Minimized", "SIDCO"
+        "sidco_size": "64x256",
+        "method": "Oracle",  # "OMP", "Oracle", "SBL"
         "N": 64,
         "M": 256,
         "L": 25,
     }
     snr_list = np.linspace(0, 40, 4)  # (start, stop, num)
-    # snr_list = np.array([20000])  # (start, stop, num)
-    rep_list = np.arange(10)
+    # snr_list = np.array([40])  # (start, stop, num)
+    rep_list = np.arange(100)
     my_mkdir(param["save_path"])
 
     # Run
     if opt_multi_process == 1:  # multi_process
         print("run sim in multi_process")
         data = Parallel(n_jobs=-1)(
-            [delayed(run_OMP)(param, snr, n_rep) for n_rep in rep_list for snr in snr_list]
+            [delayed(run_CS)(param, snr, n_rep) for n_rep in rep_list for snr in snr_list]
         )
     else:  # single_process
         data = []
         for n_rep in rep_list:
             for snr in snr_list:
-                _data = run_OMP(param, snr, n_rep)
+                _data = run_CS(param, snr, n_rep)
                 data.append(_data)
 
     ################
@@ -92,7 +95,7 @@ def plot_csv_cdf(data, save_path, filename):
     plot_csv(x, y, save_path, filename)
 
 
-def run_OMP(param, snr, n_rep):
+def run_CS(param, snr, n_rep):
     np.random.seed(seed=n_rep)
 
     # param
@@ -106,6 +109,8 @@ def run_OMP(param, snr, n_rep):
     # Generate Model
     ########################
     pn = 10 ** (-snr / 10)
+
+    # Frame
     if opt_frame == "Gauss":
         A_frame = (np.random.randn(N, M) + 1j * np.random.randn(N, M)) / np.sqrt(2)
     elif opt_frame == "Minimized":
@@ -113,8 +118,14 @@ def run_OMP(param, snr, n_rep):
         with open(fp, "rb") as f:
             A_frame = pickle.load(f)
             print("load data: " + fp)
+    elif opt_frame == "SIDCO":
+        fp = f'./SIDCO/{param["sidco_size"]}.mat'
+        Dictionary_mat = scipy.io.loadmat(fp)
+        A_frame = Dictionary_mat["A_QCS"]
+
+
+    # mutual_coherence, coherence_set = calc_coherence(A_frame)
     A_frame = (A_frame / np.sqrt(np.sum(np.abs(A_frame) ** 2))) * np.sqrt(N * M)  # 平均電力を1に制約
-    # id_nonzero = np.random.randint(0, M - 1, L)
     id_nonzero = np.random.choice(range(M), L, replace=False)
 
     x = np.zeros(M, dtype=np.complex128)
@@ -135,6 +146,12 @@ def run_OMP(param, snr, n_rep):
         x_est = np.zeros(M, dtype=np.complex128)
         x_est[id_nonzero] = _x_est
 
+    elif method == "SBL":
+        N_iter_sbl = 150
+        alpha_0 = 1e-2 * np.ones(M, dtype=np.float64)
+        X_sbl, alpha = SBL(y[:, None], A_frame, x[:, None], 1/pn, alpha_0, N_iter_sbl)
+        x_est = X_sbl[:, 0]
+
 
     ########################
     # Evaluate NMSE
@@ -142,11 +159,11 @@ def run_OMP(param, snr, n_rep):
     NMSE_x = NMSE(x, x_est)
     print(f"NMSE(x) = {10 * np.log10(NMSE_x)} [dB]")
 
-    # ########################
-    # # PLOT (|X| vs index)
-    # ########################
+    # # ########################
+    # # # PLOT (|X| vs index)
+    # # ########################
     # plt.plot(np.abs(x), "o", label="True")
-    # plt.plot(np.abs(x_omp), "^", label="OMP")
+    # plt.plot(np.abs(x_est), "x", label=method)
     # plt.xlabel("index of x")
     # plt.ylabel("|x|^2")
     # plt.legend()
@@ -158,6 +175,14 @@ def run_OMP(param, snr, n_rep):
 def NMSE(X, X_hat):
     return np.sum(np.abs(X - X_hat) ** 2) / np.sum(np.abs(X) ** 2)
 
+def calc_coherence(X):
+    M, N = X.shape
+    norm_col = np.sqrt(np.sum(np.abs(X) ** 2, axis=0))
+    X_normlized = X / norm_col
+    Gram = np.conj(X_normlized).T @ X_normlized
+    in_coherence = np.abs(Gram - np.eye(N))
+    mutual_coherence = np.max(in_coherence)
+    return mutual_coherence, in_coherence
 
 def OMP(y, A, L):
     """
@@ -204,6 +229,69 @@ def OMP(y, A, L):
     x[S == 1] = xs
 
     return x, S
+
+
+def SBL(Y, H, X, beta, alpha, N_iter):
+    # alpha : 事前精度（事前分散の逆数）
+    # beta : 雑音精度（雑音分散の逆数）
+    N, K = Y.shape
+    M = H.shape[1]
+
+    opt_debug = 0
+    if opt_debug == 1:
+        Obj = np.zeros(N_iter, dtype=np.float64)
+    if N >= M:
+        bHH = beta * np.conj(H).T @ H  # (M,M)
+    bHY = beta * np.conj(H).T @ Y
+    alpha_inv = 1 / alpha
+
+    for n_iter in range(N_iter):
+        print(f"n_iter = {n_iter}")
+
+        if N >= M:
+            Phi = np.diag(alpha)
+            Gamma = Phi + bHH  # (M,M)
+            Gamma_inv = np.linalg.pinv(Gamma)  # (M,M)
+        else:  # 逆行列補題利用した場合の計算 (M > N のとき有効)
+            C_inv = np.einsum('nm,m,mq->nq', H, alpha_inv, np.conj(H).T, optimize='optimal')  # (N, N)
+            C_inv[range(N), range(N)] = C_inv[range(N), range(N)] + 1 / beta
+            C_inv = np.linalg.inv(C_inv)
+            Gamma_inv = - np.einsum('m,mn,nq,qp,p->mp', alpha_inv, np.conj(H).T, C_inv, H, alpha_inv,
+                                    optimize='optimal')  # # (M, M)
+            Gamma_inv[range(M), range(M)] = Gamma_inv[range(M), range(M)] + alpha_inv
+
+        X_bar = Gamma_inv @ bHY  # (M,K)
+        alpha_inv = np.real(Gamma_inv[range(M), range(M)]) + np.sum(np.abs(X_bar) ** 2, axis=1)
+        alpha = 1 / alpha_inv
+
+        # calc objective function
+        if opt_debug == 1:
+            Sigma_y = H @ np.diag(alpha_inv) @ np.conj(H).T + 1 / beta * np.eye(N)
+            det_Sigma_y = np.linalg.det(Sigma_y)
+            Sigma_y_inv = np.linalg.pinv(Sigma_y)
+            Obj[n_iter] = np.real(np.log(det_Sigma_y) + np.trace(Sigma_y_inv @ Y @ np.conj(Y).T))
+            NMSE_sbl = 10 * np.log10(np.sum(np.abs(Y - H @ X_bar) ** 2) / np.sum(np.abs(Y) ** 2))
+            print(f"({n_iter}) Obj_func = {Obj[n_iter]},  NMSE(Y-HX) = {NMSE_sbl} [dB]")
+
+        # #########################
+        # TEST PLOT (|X|)
+        # plt.plot(np.mean(np.abs(X) ** 2, axis=1), "o", label="True(|X|^2)")
+        # plt.plot(alpha_inv, "^", label="SBL(1/alpha)")
+        # plt.plot(Gamma_inv[range(M), range(M)], "v", label="SBL(Gamma_inv)")
+        # plt.plot(np.mean(np.abs(X_bar) ** 2, axis=1), "x", label="SBL(|X|^2)")
+        # plt.legend()
+        # plt.show()
+        # #########################
+
+    # #########################
+    # TEST PLOT (Minimized objective function) (収束の確認)
+    plt.plot(Obj)
+    plt.xlabel("n_iter")
+    plt.ylabel("Minimized objective function")
+    plt.show()
+    # #########################
+
+    return X_bar, alpha
 
 
 def my_mkdir(path):

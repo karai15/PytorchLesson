@@ -12,10 +12,11 @@ def main():
     """
 
     # Param
-    save_path = "./data/Frame/TEST/"
-    N, M = 160, 256
-    N_iter = 100000
-    learning_rate = 1e-1
+    save_path = "../data/Frame/N64_M256_Niter1000/"  # N64_M256_Niter1000
+    N, M = 64, 256
+    N_iter = 1000
+    learning_rate = 1e0
+    device = torch.device("cpu")  # "cpu", "mps", "cuda"
     my_mkdir(save_path)
 
     ##################################
@@ -24,18 +25,19 @@ def main():
     torch.manual_seed(seed)
 
     # データ生成
-    X = torch.randn((N, M), dtype=torch.complex64, requires_grad=True)
+    X = torch.randn((N, M), dtype=torch.complex64, requires_grad=True, device=device)
 
     # 最適化手法の選択
     # optimizer = torch.optim.Adam([X], lr=learning_rate)
     optimizer = torch.optim.SGD([X], lr=learning_rate)  # 未知パラメータxを登録
 
     # パラメータの更新
-    Loss_data = np.zeros(N_iter, dtype=np.float32)
+    Loss_data = torch.zeros(N_iter, dtype=torch.float32, device=device)
+    I_M = torch.eye(M, dtype=torch.complex64, device=device)
     for n_iter in range(N_iter):
 
         # コヒーレンスの計算
-        mutual_coherence, coherence_set = calc_coherence(X)
+        mutual_coherence, coherence_set = calc_coherence(X, I_M)
 
         # パラメータの更新
         optimizer.zero_grad()  # 勾配を０に初期化．これをしないと，ステップするたびに勾配が足し合わされる
@@ -49,6 +51,7 @@ def main():
     Welch_bound = np.sqrt((M - N) / (N * (M - 1))) * np.ones(N_iter)
 
     # Tensor -> Numpy
+    Loss_data = Loss_data.to('cpu').detach().numpy().copy()
     coherence_set = coherence_set.to('cpu').detach().numpy().copy()
     X = X.to('cpu').detach().numpy().copy()
     X = (X / np.sqrt(np.sum(np.abs(X) ** 2))) * np.sqrt(N * M)  # 平均電力を1に制約
@@ -102,12 +105,11 @@ def plot_cmap(data, save_path, filename, vmin, vmax):
     plt.savefig(os.path.join(save_path, filename + ".jpeg"))
 
 
-def calc_coherence(X):
-    M,N = X.shape
+def calc_coherence(X, I_M):
     norm_col = torch.sqrt(torch.sum(torch.abs(X) ** 2, axis=0))
     X_normlized = X / norm_col
     Gram = torch.conj(X_normlized).T @ X_normlized
-    coherence_set = torch.abs(Gram - torch.eye(N))
+    coherence_set = torch.abs(Gram - I_M)
     mutual_coherence = torch.max(coherence_set)
     return mutual_coherence, coherence_set
 
