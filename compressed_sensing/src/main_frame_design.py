@@ -5,6 +5,7 @@ import time
 import os
 import pickle
 
+
 def main():
     """
     相互コヒーレンスの最小化
@@ -12,9 +13,10 @@ def main():
     """
 
     # Param
-    save_path = "../data/Frame/N64_M256_Niter1000/"  # N64_M256_Niter1000
+    opt_loss = "total_coherence"  # "mutual_coherence", "total_coherence", "sum_square_coherence"
+    save_path = "../data/Frame/TEST/"  # N64_M256_Niter50000_TC
     N, M = 64, 256
-    N_iter = 1000
+    N_iter = 500
     learning_rate = 1e0
     device = torch.device("cpu")  # "cpu", "mps", "cuda"
     my_mkdir(save_path)
@@ -39,11 +41,23 @@ def main():
         # コヒーレンスの計算
         mutual_coherence, coherence_set = calc_coherence(X, I_M)
 
+        if opt_loss == "mutual_coherence":
+            loss = mutual_coherence
+        elif opt_loss == "total_coherence":
+            total_coherence = torch.sum(coherence_set)
+            loss = total_coherence
+
+            #
+            coherence_set = coherence_set.to('cpu').detach().numpy().copy()
+            plt.plot(coherence_set)
+            plt.show()
+
         # パラメータの更新
         optimizer.zero_grad()  # 勾配を０に初期化．これをしないと，ステップするたびに勾配が足し合わされる
-        mutual_coherence.backward()
+        loss.backward()
         optimizer.step()
-        Loss_data[n_iter] = mutual_coherence
+        Loss_data[n_iter] = loss
+        # print(f"({n_iter}) loss = {loss}")
         print(f"({n_iter}) mutual_coherence = {mutual_coherence}")
         # print(f"x = {x}")
 
@@ -81,6 +95,7 @@ def main():
     plot_csv(x, Welch_bound, save_path, filename="Loss_vs_iterations_Welch_bound")
     ################
 
+
 def plot_csv(x, y, save_path, filename):
     # plt
     plt.figure()
@@ -90,6 +105,7 @@ def plot_csv(x, y, save_path, filename):
     data_csv = np.stack([x, y], 1)
     np.savetxt(os.path.join(save_path, filename + ".csv"), data_csv, delimiter=',')  # (x, y)
 
+
 def plot_csv_cdf(data, save_path, filename):
     N_bins = 100
     h_weight = np.ones(len(data)) / len(data)
@@ -97,6 +113,7 @@ def plot_csv_cdf(data, save_path, filename):
     y = cdf[0][0:N_bins]
     x = (cdf[1][0:N_bins])
     plot_csv(x, y, save_path, filename)
+
 
 def plot_cmap(data, save_path, filename, vmin, vmax):
     plt.figure()
@@ -113,9 +130,11 @@ def calc_coherence(X, I_M):
     mutual_coherence = torch.max(coherence_set)
     return mutual_coherence, coherence_set
 
+
 def my_mkdir(path):
     if not os.path.isdir(path):
         os.makedirs(path)
+
 
 t_1 = time.time()
 main()

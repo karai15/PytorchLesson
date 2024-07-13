@@ -14,11 +14,6 @@ def main():
     # L : num of nonzero elements
     ########################
 
-    """
-    ・SBL
-    ・フレーム変えた場合
-    ・
-    """
 
     # Param
     opt_multi_process = 0
@@ -283,13 +278,13 @@ def SBL(Y, H, X, beta, alpha, N_iter):
         # plt.show()
         # #########################
 
-    # #########################
-    # TEST PLOT (Minimized objective function) (収束の確認)
-    plt.plot(Obj)
-    plt.xlabel("n_iter")
-    plt.ylabel("Minimized objective function")
-    plt.show()
-    # #########################
+    # # #########################
+    # # TEST PLOT (Minimized objective function) (収束の確認)
+    # plt.plot(Obj)
+    # plt.xlabel("n_iter")
+    # plt.ylabel("Minimized objective function")
+    # plt.show()
+    # # #########################
 
     return X_bar, alpha
 
