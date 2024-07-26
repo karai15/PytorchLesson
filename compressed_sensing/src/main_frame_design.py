@@ -46,11 +46,9 @@ def main():
         elif opt_loss == "total_coherence":
             total_coherence = torch.sum(coherence_set)
             loss = total_coherence
-
-            #
-            coherence_set = coherence_set.to('cpu').detach().numpy().copy()
-            plt.plot(coherence_set)
-            plt.show()
+            # coherence_set = coherence_set.to('cpu').detach().numpy().copy()
+            # plt.plot(coherence_set)
+            # plt.show()
 
         # パラメータの更新
         optimizer.zero_grad()  # 勾配を０に初期化．これをしないと，ステップするたびに勾配が足し合わされる
