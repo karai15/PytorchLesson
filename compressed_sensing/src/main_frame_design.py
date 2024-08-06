@@ -4,6 +4,7 @@ import matplotlib.pyplot as plt
 import time
 import os
 import pickle
+import subprocess
 
 
 def main():
@@ -12,30 +13,46 @@ def main():
     minimize \mu(X)
     """
 
-    # Param
-    opt_loss = "total_coherence"  # "mutual_coherence", "total_coherence", "sum_square_coherence"
-    save_path = "../data/Frame/TEST/"  # N64_M256_Niter50000_TC
-    N, M = 64, 256
-    N_iter = 500
-    learning_rate = 1e0
-    device = torch.device("cpu")  # "cpu", "mps", "cuda"
-    my_mkdir(save_path)
-
-    ##################################
     # 乱数シードの設定
     seed = 0
     torch.manual_seed(seed)
 
-    # データ生成
-    X = torch.randn((N, M), dtype=torch.complex64, requires_grad=True, device=device)
+    # Param
+    opt_loss = "pnorm_coherence"  # "mutual_coherence", "total_coherence", "pnorm_coherence", "Log_Sum", "Exp_Sum"
+    save_path = "../data/Frame/TEST/"  # N64_M256_Niter10000_ExpSum
+    N, M = 64, 256
+    N_iter = 500
+    p = 3
+    learning_rate = 1e-2  # 1e-4
+    device = "cpu"  # "cpu", "mps", "cuda"
+    my_mkdir(save_path)
+
+    ##################
+    # 使用するGPUを決定
+    if device == "cuda":
+        least_used_gpu = get_least_used_gpu()
+        device = torch.device(f'cuda:{least_used_gpu}')
+    else:
+        device = torch.device(device)
+    ##################
+
+    ##################################
+    # # データ生成
+    X0 = torch.randn((N, M), dtype=torch.complex64, device=device)
+    X_pow = (torch.sum(torch.abs(X0) ** 2)) ** (1 / 2)
+    X = (X0 / X_pow)
+    X.requires_grad = True
+    X_ini = X.to('cpu').detach().numpy().copy()  # 初期フレームの保存
 
     # 最適化手法の選択
     # optimizer = torch.optim.Adam([X], lr=learning_rate)
     optimizer = torch.optim.SGD([X], lr=learning_rate)  # 未知パラメータxを登録
 
     # パラメータの更新
-    Loss_data = torch.zeros(N_iter, dtype=torch.float32, device=device)
+    # Loss_data = torch.zeros(N_iter, dtype=torch.float32, device=device)
+    Loss_data = np.zeros(N_iter, dtype=np.float32)
     I_M = torch.eye(M, dtype=torch.complex64, device=device)
+    I_M_real = torch.eye(M, dtype=torch.float32, device=device)
     for n_iter in range(N_iter):
 
         # コヒーレンスの計算
@@ -49,24 +66,33 @@ def main():
             # coherence_set = coherence_set.to('cpu').detach().numpy().copy()
             # plt.plot(coherence_set)
             # plt.show()
+        elif opt_loss == "pnorm_coherence":
+            loss = torch.norm(coherence_set, p=p)
+
+        elif opt_loss == "Log_Sum":  # min Log-Sum = max Geo-Mean
+            loss = torch.mean(torch.log(coherence_set + I_M_real))
+
+        elif opt_loss == "Exp_Sum":
+            loss = torch.mean(torch.exp(coherence_set))
 
         # パラメータの更新
         optimizer.zero_grad()  # 勾配を０に初期化．これをしないと，ステップするたびに勾配が足し合わされる
         loss.backward()
         optimizer.step()
-        Loss_data[n_iter] = loss
-        # print(f"({n_iter}) loss = {loss}")
-        print(f"({n_iter}) mutual_coherence = {mutual_coherence}")
+        print(f"({n_iter}) loss = {loss:.4f}, MC = {mutual_coherence:.4f}")
         # print(f"x = {x}")
+
+        # データ回収
+        Loss_data[n_iter] = loss.to('cpu').detach().numpy().copy()
 
     # Welch bound
     Welch_bound = np.sqrt((M - N) / (N * (M - 1))) * np.ones(N_iter)
+    print(f"Welch_bound = {Welch_bound[0]}")
 
     # Tensor -> Numpy
-    Loss_data = Loss_data.to('cpu').detach().numpy().copy()
-    coherence_set = coherence_set.to('cpu').detach().numpy().copy()
     X = X.to('cpu').detach().numpy().copy()
     X = (X / np.sqrt(np.sum(np.abs(X) ** 2))) * np.sqrt(N * M)  # 平均電力を1に制約
+    mutual_coherence, coherence_set = calc_coherence_np(X)
 
     # save frame
     fp = os.path.join(save_path, "frame.pickle")
@@ -129,9 +155,36 @@ def calc_coherence(X, I_M):
     return mutual_coherence, coherence_set
 
 
+def calc_coherence_np(X):
+    M, N = X.shape
+    norm_col = np.sqrt(np.sum(np.abs(X) ** 2, axis=0))
+    X_normlized = X / norm_col
+    Gram = np.conj(X_normlized).T @ X_normlized
+    coherence_set = np.abs(Gram - np.eye(N))
+    mutual_coherence = np.max(coherence_set)
+    return mutual_coherence, coherence_set
+
+
 def my_mkdir(path):
     if not os.path.isdir(path):
         os.makedirs(path)
+
+
+def get_least_used_gpu():
+    # nvidia-smiの出力を取得
+    result = subprocess.run(['nvidia-smi', '--query-gpu=memory.used,memory.total', '--format=csv,nounits,noheader'],
+                            stdout=subprocess.PIPE)
+    output = result.stdout.decode('utf-8').strip().split('\n')
+
+    # GPUの使用量と総メモリを解析
+    memory_usage = []
+    for line in output:
+        used, total = map(int, line.split(', '))
+        memory_usage.append((used, total))
+    # 使用率（使用メモリ/総メモリ）が最も低いGPUを選択
+    usage_ratios = [used / total for used, total in memory_usage]
+    least_used_gpu = usage_ratios.index(min(usage_ratios))
+    return least_used_gpu
 
 
 t_1 = time.time()

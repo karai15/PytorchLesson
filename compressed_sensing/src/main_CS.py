@@ -16,21 +16,31 @@ def main():
 
 
     # Param
-    opt_multi_process = 0
+    opt_multi_process = 1
     param = {
-        "save_path": "../data/CS/N64M256L25_Oracle_Minimized/",  # N64M256L25_Oracle_Gauss
-        "load_path_frame": "../data/Frame/N64_M256_Niter1000/",
+        #
+        "save_path": "../data/CS/N64M512L15_Gauss/",  # N64M256L25_Oracle_Gauss
+        # "save_path": "../data/CS/N64M512L15_Opt_p1/",  # N64M256L25_Oracle_Gauss
+        # "save_path": "../data/CS/N64M512L15_Opt_p2/",  # N64M256L25_Oracle_Gauss
+        # "save_path": "../data/CS/N64M512L15_Opt_p3/",  # N64M256L25_Oracle_Gauss
+        # "save_path": "../data/CS/N64M512L15_Opt_pinf/",  # N64M256L25_Oracle_Gauss
+        #
+        "load_path_frame": "../data/Frame/N64_M512_Niter100000_p1/",  # N64_M512_Niter100000_p1
+        # "load_path_frame": "../data/Frame/N64_M512_Niter100000_p2/",  # N64_M512_Niter100000_p1
+        # "load_path_frame": "../data/Frame/N64_M512_Niter100000_p3/",  # N64_M512_Niter100000_p1
+        # "load_path_frame": "../data/Frame/N64_M512_Niter100000_pinf/",  # N64_M512_Niter100000_p1
+        #
         "filename_frame": "frame.pickle",
-        "opt_frame": "SIDCO",  # "Gauss", "Minimized", "SIDCO"
+        "opt_frame": "Minimized",  # "Gauss", "Minimized", "SIDCO"
         "sidco_size": "64x256",
-        "method": "Oracle",  # "OMP", "Oracle", "SBL"
+        "method": "OMP",  # "OMP", "Oracle", "SBL"
         "N": 64,
-        "M": 256,
+        "M": 512,
         "L": 25,
     }
     snr_list = np.linspace(0, 40, 4)  # (start, stop, num)
     # snr_list = np.array([40])  # (start, stop, num)
-    rep_list = np.arange(100)
+    rep_list = np.arange(1000)
     my_mkdir(param["save_path"])
 
     # Run
