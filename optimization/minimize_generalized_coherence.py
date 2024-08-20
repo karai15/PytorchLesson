@@ -60,7 +60,7 @@ def main():
     welch_bound = np.sqrt((M - N) / (N * (M - 1)))
     print(f"welch_bound = {welch_bound}")
 
-    plt.figure
+    plt.figure()
     plt.plot(data_Loss, "-x")
     # plt.show()
 

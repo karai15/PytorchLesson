@@ -18,12 +18,12 @@ def main():
     torch.manual_seed(seed)
 
     # Param
-    opt_loss = "pnorm_coherence"  # "mutual_coherence", "total_coherence", "pnorm_coherence", "Log_Sum", "Exp_Sum"
+    opt_loss = "Gauss"  # "mutual_coherence", "total_coherence", "pnorm_coherence", "Log_Sum", "Exp_Sum", "Determinant"
     save_path = "../data/Frame/TEST/"  # N64_M256_Niter10000_ExpSum
-    N, M = 64, 256
-    N_iter = 500
+    N, M = 64, 512
+    N_iter = 1
     p = 3
-    learning_rate = 1e-2  # 1e-4
+    learning_rate = 1e-3  # 1e-4
     device = "cpu"  # "cpu", "mps", "cuda"
     my_mkdir(save_path)
 
@@ -74,6 +74,26 @@ def main():
 
         elif opt_loss == "Exp_Sum":
             loss = torch.mean(torch.exp(coherence_set))
+
+        elif opt_loss == "Determinant":  # 固有値のLogSumの最大化
+
+            # 総電力が1になるように正規化
+            X_pow = (torch.sum(torch.abs(X) ** 2)) ** (1 / 2)
+            X_norm = X / X_pow
+
+            Gram = X_norm @ torch.conj(X_norm).T
+            eig_values = torch.real(torch.linalg.eigvals(Gram))
+            loss = - torch.sum(torch.log(eig_values))
+
+        elif opt_loss == "Gauss":
+            loss = 1
+
+            # ####################
+            # eig_values_np = eig_values.to('cpu').detach().numpy().copy()  # 初期フレームの保存
+            # plt.plot(eig_values_np, "x")
+            # plt.show()
+            # test = 1
+            # ####################
 
         # パラメータの更新
         optimizer.zero_grad()  # 勾配を０に初期化．これをしないと，ステップするたびに勾配が足し合わされる
