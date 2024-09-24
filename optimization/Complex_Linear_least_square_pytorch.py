@@ -28,18 +28,41 @@ def main():
     Loss_data = np.zeros(N_iter, dtype=np.float32)
     for n_iter in range(N_iter):
         loss = torch.sum(torch.abs(A @ x - b) ** 2)
-        optimizer.zero_grad()  # 勾配を０に初期化．これをしないと，ステップするたびに勾配が足し合わされる
-        loss.backward()
-        optimizer.step()
+
+        # # ###########
+        # # パターン１ (Optimizerを使う方法)
+        # optimizer.zero_grad()  # 勾配を０に初期化．これをしないと，ステップするたびに勾配が足し合わされる
+        # loss.backward()
+        # optimizer.step()
+        # # ###########
+
+        ###########
+        # パターン２（自動微分）
+        loss.backward(retain_graph=False) # retain_graph=False: backward後に計算グラフを開放（デフォルトでFalse）
+        with torch.no_grad():  # このブロック内部では計算グラフは構築されない
+            df_dx_auto = x.grad
+            x.data = x.data - learning_rate * df_dx_auto
+            x.grad.zero_()  # 勾配を０に初期化．これをしないと，ステップするたびに勾配が足し合わされる
+        ###########
+
+        # ###########
+        # # パターン３ (自動微分：ステップ後のｘを新しい中間変数として保存)
+        # loss.backward(retain_graph=False)
+        # with torch.no_grad():
+        #     df_dx_auto = x.grad
+        # x = x - learning_rate * df_dx_auto
+        # x.retain_grad()  # 中間変数の微分値を保存するための設定
+        # ###########
+
         Loss_data[n_iter] = loss
-        print(f"loss = {loss}")
+        print(f"({n_iter}) loss = {loss}")
         # print(f"x = {x}")
 
     # 評価
     x_hat_GD = x
     x_hat_LS = torch.linalg.pinv(A) @ b
-    error = torch.abs(x_hat_GD - x_hat_LS)
-    print(f"error = {error}")
+    NMSE = 10 * torch.log10(torch.sum(torch.abs(x_hat_GD - x_hat_LS) ** 2))
+    print(f"NMSE = {NMSE} [dB]")
 
     # plot
     plt.plot(Loss_data, "x-")
