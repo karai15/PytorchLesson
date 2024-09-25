@@ -32,14 +32,15 @@ def main():
         # # ###########
         # # パターン１ (Optimizerを使う方法)
         # optimizer.zero_grad()  # 勾配を０に初期化．これをしないと，ステップするたびに勾配が足し合わされる
-        # loss.backward()
+        # # loss.backward()
+        # loss.backward(retain_graph=True)  # retain_graph=False: backward後に計算グラフを開放（デフォルトでFalse）
         # optimizer.step()
         # # ###########
 
         ###########
         # パターン２（自動微分）
-        loss.backward(retain_graph=False) # retain_graph=False: backward後に計算グラフを開放（デフォルトでFalse）
-        with torch.no_grad():  # このブロック内部では計算グラフは構築されない
+        loss.backward(retain_graph=False)
+        with torch.no_grad():  # このブロック内部の記述は，計算グラフは構築されない
             df_dx_auto = x.grad
             x.data = x.data - learning_rate * df_dx_auto
             x.grad.zero_()  # 勾配を０に初期化．これをしないと，ステップするたびに勾配が足し合わされる
@@ -48,7 +49,7 @@ def main():
         # ###########
         # # パターン３ (自動微分：ステップ後のｘを新しい中間変数として保存)
         # loss.backward(retain_graph=False)
-        # with torch.no_grad():
+        # with torch.no_grad():  # このブロック内部の記述は，計算グラフは構築されない
         #     df_dx_auto = x.grad
         # x = x - learning_rate * df_dx_auto
         # x.retain_grad()  # 中間変数の微分値を保存するための設定

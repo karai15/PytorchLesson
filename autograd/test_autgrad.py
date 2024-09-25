@@ -62,35 +62,34 @@ def main():
 
     # E = torch.zeros((2 * N, 2 * N), dtype=torch.complex64)
     # E.requires_grad = False
-    N_iter = 10
+    N_iter = 100
     for n_iter in range(N_iter):
 
         # lossの計算
-        # E = torch.zeros((2 * N, 2 * N), dtype=torch.complex64)
-        # E[0:N, 0:N] = A @ X
-        # E[0:N, N:] = B @ X
-        # E[N:, 0:N] = C @ X
-        # E[N:, N:] = D @ X
-        E = A @ X
+        E = torch.zeros((2 * N, 2 * N), dtype=torch.complex64)
+        E[0:N, 0:N] = A @ X
+        E[0:N, N:] = B @ X
+        E[N:, 0:N] = C @ X
+        E[N:, N:] = D @ X
+        # E = A @ X
 
         f = torch.norm(torch.linalg.inv(E), "fro")
         # f = torch.norm(E, "fro")
         # f.backward()
 
-        ###########
-        optimizer.zero_grad()  # 勾配を０に初期化．これをしないと，ステップするたびに勾配が足し合わされる
-        f.backward(retain_graph=True)
+        # ###########
+        # optimizer.zero_grad()  # 勾配を０に初期化．これをしないと，ステップするたびに勾配が足し合わされる
         # f.backward(retain_graph=False)
-        # f.backward()
-        optimizer.step()
-        ###########
+        # optimizer.step()
+        # ###########
 
-        # ###########
-        # f.backward(retain_graph=False)
-        # with torch.no_grad():
-        #     df_dx_auto = X.grad
-        #     X -= learning_rate * df_dx_auto
-        # ###########
+        ###########
+        f.backward(retain_graph=False)
+        with torch.no_grad():
+            df_dx_auto = X.grad
+            X.data = X.data - learning_rate * df_dx_auto
+            X.grad.zero_()  # 勾配を０に初期化．これをしないと，ステップするたびに勾配が足し合わされる
+        ###########
 
         # ###########
         # f.backward(retain_graph=False)
@@ -98,13 +97,6 @@ def main():
         #     df_dx_auto = X.grad
         # X = X - learning_rate * df_dx_auto
         # X.retain_grad()  # 中間変数の微分値を保存するための設定（デフォでは保存されない）
-        # ###########
-
-        # ###########
-        # f.backward(retain_graph=False)
-        # with torch.no_grad():
-        #     df_dx_auto = X.grad
-        #     X.data = X.data - learning_rate * df_dx_auto
         # ###########
 
         # ############
