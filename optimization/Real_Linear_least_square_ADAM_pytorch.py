@@ -15,9 +15,9 @@ def main():
 
     # データ生成
     M, N = 2, 2
-    A = torch.randn((M, N)) + 1j * torch.randn((M, N))
-    b = torch.randn(N) + 1j * torch.randn(N)
-    x = torch.randn(N, dtype=torch.complex64, requires_grad=True)  # 未知パラメータ
+    A = torch.randn((M, N))
+    b = torch.randn(N)
+    x = torch.randn(N, requires_grad=True)  # 未知パラメータ
 
     # ADAMのパラメータ
     mt = 0  # 1次のモーメント
@@ -32,32 +32,30 @@ def main():
                                  weight_decay=0, amsgrad=False)
 
     # パラメータの更新
-    N_iter = 5
+    N_iter = 100
     Loss_data = np.zeros(N_iter, dtype=np.float32)
     for n_iter in range(N_iter):
         loss = torch.sum(torch.abs(A @ x - b) ** 2)
 
-        # # ###########
-        # # パターン１ (Optimizerを使う方法)
-        # optimizer.zero_grad()  # 勾配を０に初期化．これをしないと，ステップするたびに勾配が足し合わされる
-        # loss.backward(retain_graph=False)  # retain_graph=False: backward後に計算グラフを開放（デフォルトでFalse）
-        # optimizer.step()
-        # # ###########
+        # ###########
+        # パターン１ (Optimizerを使う方法)
+        optimizer.zero_grad()  # 勾配を０に初期化．これをしないと，ステップするたびに勾配が足し合わされる
+        loss.backward(retain_graph=False)  # retain_graph=False: backward後に計算グラフを開放（デフォルトでFalse）
+        optimizer.step()
+        # ###########
 
-        ###########
-        # パターン２（自動微分） https://pytorch.org/docs/stable/generated/torch.optim.Adam.html
-        loss.backward(retain_graph=False)
-        with torch.no_grad():  # このブロック内部の記述は，計算グラフは構築されない
-            df_dx_auto = x.grad
-            mt = beta_mt * mt + (1 - beta_mt) * df_dx_auto
-            vt = beta_vt * vt + (1 - beta_vt) * torch.abs(df_dx_auto) ** 2
-            # vt = beta_vt * vt + (1 - beta_vt) * torch.conj(df_dx_auto) @ df_dx_auto
-            # vt = beta_vt * vt + (1 - beta_vt) * torch.sum(torch.abs(df_dx_auto) ** 2)
-            mt_hat = mt / (1 - beta_mt ** (n_iter + 1))
-            vt_hat = vt / (1 - beta_vt ** (n_iter + 1))
-            x.data = x.data - learning_rate * mt_hat / (vt_hat ** (1 / 2) + eps)
-            x.grad.zero_()  # 勾配を０に初期化．これをしないと，ステップするたびに勾配が足し合わされる
-        ###########
+        # ###########
+        # # パターン２（自動微分） https://pytorch.org/docs/stable/generated/torch.optim.Adam.html
+        # loss.backward(retain_graph=False)
+        # with torch.no_grad():  # このブロック内部の記述は，計算グラフは構築されない
+        #     df_dx_auto = x.grad
+        #     mt = beta_mt * mt + (1 - beta_mt) * df_dx_auto
+        #     vt = beta_vt * vt + (1 - beta_vt) * torch.abs(df_dx_auto) ** 2
+        #     mt_hat = mt / (1 - beta_mt ** (n_iter + 1))
+        #     vt_hat = vt / (1 - beta_vt ** (n_iter + 1))
+        #     x.data = x.data - learning_rate * mt_hat / (vt_hat ** (1 / 2) + eps)
+        #     x.grad.zero_()  # 勾配を０に初期化．これをしないと，ステップするたびに勾配が足し合わされる
+        # ###########
 
         Loss_data[n_iter] = loss
         print(f"({n_iter}) loss = {loss}")

@@ -10,11 +10,11 @@ def main():
     """
 
     # 乱数シードの設定
-    seed = 1
+    seed = 2
     torch.manual_seed(seed)
 
     # データ生成
-    M, N = 2, 2
+    M, N = 8, 8
     A = torch.randn((M, N)) + 1j * torch.randn((M, N))
     b = torch.randn(N) + 1j * torch.randn(N)
     x = torch.randn(N, dtype=torch.complex64, requires_grad=True)  # 未知パラメータ
@@ -24,7 +24,7 @@ def main():
     vt = 0  # 2次のモーメント
     beta_mt = 0.9
     beta_vt = 0.999
-    eps = 1e-7
+    eps = 1e-8
     learning_rate = 1e-1
 
     # 最適化手法の選択
@@ -32,7 +32,7 @@ def main():
                                  weight_decay=0, amsgrad=False)
 
     # パラメータの更新
-    N_iter = 5
+    N_iter = 1000
     Loss_data = np.zeros(N_iter, dtype=np.float32)
     for n_iter in range(N_iter):
         loss = torch.sum(torch.abs(A @ x - b) ** 2)
@@ -51,11 +51,10 @@ def main():
             df_dx_auto = x.grad
             mt = beta_mt * mt + (1 - beta_mt) * df_dx_auto
             vt = beta_vt * vt + (1 - beta_vt) * torch.abs(df_dx_auto) ** 2
-            # vt = beta_vt * vt + (1 - beta_vt) * torch.conj(df_dx_auto) @ df_dx_auto
-            # vt = beta_vt * vt + (1 - beta_vt) * torch.sum(torch.abs(df_dx_auto) ** 2)
             mt_hat = mt / (1 - beta_mt ** (n_iter + 1))
             vt_hat = vt / (1 - beta_vt ** (n_iter + 1))
             x.data = x.data - learning_rate * mt_hat / (vt_hat ** (1 / 2) + eps)
+            x.data = x.data - learning_rate * mt_hat / (torch.sqrt(vt_hat) + eps)
             x.grad.zero_()  # 勾配を０に初期化．これをしないと，ステップするたびに勾配が足し合わされる
         ###########
 
