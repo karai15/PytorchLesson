@@ -14,9 +14,9 @@ def main():
     N, M = 10, 4
 
     # 初期値
-    A_tmp = torch.randn(N, N)
+    A_tmp = torch.randn(N, N, dtype=torch.complex64)
     A = A_tmp @ torch.conj(A_tmp).T
-    X_tmp = torch.randn(N, M)
+    X_tmp = torch.randn(N, M, dtype=torch.complex64)
     X = torch.linalg.qr(X_tmp)[0]
     X.requires_grad = True
 
