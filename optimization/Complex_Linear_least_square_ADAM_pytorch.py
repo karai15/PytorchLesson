@@ -20,12 +20,12 @@ def main():
     x = torch.randn(N, dtype=torch.complex64, requires_grad=True)  # 未知パラメータ
 
     # ADAMのパラメータ
-    mt = 0  # 1次のモーメント
-    vt = 0  # 2次のモーメント
     beta_mt = 0.9
     beta_vt = 0.999
     eps = 1e-8
     learning_rate = 1e-1
+    mt = torch.zeros(N, dtype=torch.complex64)  # 1次のモーメント
+    vt = torch.zeros(N, dtype=torch.complex64)  # 2次のモーメント
 
     # 最適化手法の選択
     optimizer = torch.optim.Adam([x], lr=learning_rate, betas=(beta_mt, beta_vt), eps=eps,
