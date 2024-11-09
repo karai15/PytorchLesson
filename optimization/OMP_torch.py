@@ -44,12 +44,20 @@ def main():
         memo
             ・Lossは単調に下がっているけど，Aの自由度が大きすぎて観測にフィットしているだけで，実際のｘを再現するように動いているわけではない．
             ・現時点では，Aのパワー制約が入っていない．
+            （Aのパワーの列ノルムとｘの大きさはどちらを大きくしても再構成結果は同じになるので，一意に絞れない）
         """
 
         ####################
         # DOMP
         beta = 100
-        x_hat, A_hat = differentiable_OMP(y, A, L, beta)
+
+        ###
+        norm_A = torch.sqrt(torch.sum(torch.abs(A) ** 2, axis=0))
+        A_nrm = A / norm_A[None, :]
+        x_hat, A_hat = differentiable_OMP(y, A_nrm, L, beta)
+        ###
+
+        # x_hat, A_hat = differentiable_OMP(y, A, L, beta)
         # 評価
         NMSE = torch.sum(torch.abs(y - A_hat @ x_hat) ** 2) / torch.sum(torch.abs(y) ** 2)
         print(f"({n_iter}) NMSE = {10 * torch.log10(NMSE)} [dB]")
@@ -59,7 +67,9 @@ def main():
         # # 確認用
         # OMP
         y_np = y.to('cpu').detach().numpy().copy()
-        A_np = A.to('cpu').detach().numpy().copy()
+        # A_np = A.to('cpu').detach().numpy().copy()
+        A_np = A_nrm.to('cpu').detach().numpy().copy()
+
         x_np = x.to('cpu').detach().numpy().copy()
         x_hat_np, S = OMP(y_np, A_np, L)
         # 評価
