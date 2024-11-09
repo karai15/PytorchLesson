@@ -37,20 +37,19 @@ def main():
     y = torch.from_numpy(y.astype(np.complex64)).to(device)
     ####################
 
-    N_iter = 10
+    N_iter = 30
+    NMSE_data = np.zeros(N_iter, np.float32)
     for n_iter in range(N_iter):
 
         """
         memo
             ・Lossは単調に下がっているけど，Aの自由度が大きすぎて観測にフィットしているだけで，実際のｘを再現するように動いているわけではない．
-            ・現時点では，Aのパワー制約が入っていない．
-            （Aのパワーの列ノルムとｘの大きさはどちらを大きくしても再構成結果は同じになるので，一意に絞れない）
+            ・フレームを任意にいじれてしまうので，任意の信号を表現できてしまう．（真の辞書Aを再現できているわけではない）
         """
 
         ####################
         # DOMP
         beta = 100
-
         ###
         norm_A = torch.sqrt(torch.sum(torch.abs(A) ** 2, axis=0))
         A_nrm = A / norm_A[None, :]
@@ -59,28 +58,30 @@ def main():
 
         # x_hat, A_hat = differentiable_OMP(y, A, L, beta)
         # 評価
+        # NMSE = torch.sum(torch.abs(y - A_hat @ x_hat) ** 2) / torch.sum(torch.abs(y) ** 2)
         NMSE = torch.sum(torch.abs(y - A_hat @ x_hat) ** 2) / torch.sum(torch.abs(y) ** 2)
         print(f"({n_iter}) NMSE = {10 * torch.log10(NMSE)} [dB]")
+        NMSE_data[n_iter] = NMSE.to('cpu').detach().numpy().copy()
         ####################
 
-        ####################
-        # # 確認用
-        # OMP
-        y_np = y.to('cpu').detach().numpy().copy()
-        # A_np = A.to('cpu').detach().numpy().copy()
-        A_np = A_nrm.to('cpu').detach().numpy().copy()
-
-        x_np = x.to('cpu').detach().numpy().copy()
-        x_hat_np, S = OMP(y_np, A_np, L)
-        # 評価
-        NMSE = np.sum(np.abs(y_np - A_np[:, S == 1] @ x_hat_np[S == 1]) ** 2) / np.sum(np.abs(y_np) ** 2)
-        print(f"({n_iter}) NMSE_np = {10 * np.log10(NMSE)} [dB]")
-        # plot
-        plt.plot(np.abs(x_hat_np), "o", label="Est")
-        plt.plot(np.abs(x_np), "x", label="True")
-        plt.legend()
-        plt.show()
-        ####################
+        # ####################
+        # # # 確認用
+        # # OMP
+        # y_np = y.to('cpu').detach().numpy().copy()
+        # # A_np = A.to('cpu').detach().numpy().copy()
+        # A_np = A_nrm.to('cpu').detach().numpy().copy()
+        #
+        # x_np = x.to('cpu').detach().numpy().copy()
+        # x_hat_np, S = OMP(y_np, A_np, L)
+        # # 評価
+        # NMSE = np.sum(np.abs(y_np - A_np[:, S == 1] @ x_hat_np[S == 1]) ** 2) / np.sum(np.abs(y_np) ** 2)
+        # print(f"({n_iter}) NMSE_np = {10 * np.log10(NMSE)} [dB]")
+        # # plot
+        # plt.plot(np.abs(x_hat_np), "o", label="Est")
+        # plt.plot(np.abs(x_np), "x", label="True")
+        # plt.legend()
+        # plt.show()
+        # ####################
 
         ###########
         # 自動微分
@@ -101,6 +102,9 @@ def main():
     # plt.plot(sigma, "x")
     # plt.show()
     #################
+
+    plt.plot(10 * np.log10(NMSE_data), "x")
+    plt.show()
 
 
 
@@ -128,6 +132,20 @@ def differentiable_OMP(y, A, L, beta):
                 A_hat_l = torch.cat((A_hat_l, a_hat_l[:, None]), dim=1)
             x_hat_l = torch.linalg.pinv(A_hat_l) @ y
             r = y - A_hat_l @ x_hat_l
+
+        # ####################
+        # # # 確認用
+        # # OMP
+        # sigma_1 = torch.nn.functional.softmax(100 * corr, dim=-1)
+        # sigma_2 = torch.nn.functional.softmax(10 * corr, dim=-1)
+        # sigma_1 = sigma_1.to('cpu').detach().numpy().copy()
+        # sigma_2 = sigma_2.to('cpu').detach().numpy().copy()
+        # # plot
+        # plt.plot(sigma_1, "o", label=r"$\beta=100$")
+        # plt.plot(sigma_2, "x", label=r"$\beta=10$")
+        # plt.legend()
+        # plt.show()
+        # ####################
 
     return x_hat_l, A_hat_l
 
