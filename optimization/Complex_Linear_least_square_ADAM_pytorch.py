@@ -32,7 +32,7 @@ def main():
                                  weight_decay=0, amsgrad=False)
 
     # パラメータの更新
-    N_iter = 1000
+    N_iter = 50
     Loss_data = np.zeros(N_iter, dtype=np.float32)
     for n_iter in range(N_iter):
         loss = torch.sum(torch.abs(A @ x - b) ** 2)
@@ -53,7 +53,6 @@ def main():
             vt = beta_vt * vt + (1 - beta_vt) * torch.abs(df_dx_auto) ** 2
             mt_hat = mt / (1 - beta_mt ** (n_iter + 1))
             vt_hat = vt / (1 - beta_vt ** (n_iter + 1))
-            x.data = x.data - learning_rate * mt_hat / (vt_hat ** (1 / 2) + eps)
             x.data = x.data - learning_rate * mt_hat / (torch.sqrt(vt_hat) + eps)
             x.grad.zero_()  # 勾配を０に初期化．これをしないと，ステップするたびに勾配が足し合わされる
         ###########
