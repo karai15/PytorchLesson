@@ -18,7 +18,7 @@ def main():
     # フレームの作成
     A_true = (np.random.randn(N, M) + 1j * np.random.randn(N, M)) / np.sqrt(2)
     A_true = A_true / np.sqrt(np.sum(np.abs(A_true) ** 2, axis=0))[None, :]
-    SNR_A_dB = 20
+    SNR_A_dB = 0
     Noise_A = (np.random.randn(N, M) + 1j * np.random.randn(N, M)) / np.sqrt(2 * 10 ** (SNR_A_dB / 10))
     A = A_true + Noise_A  # 観測が作成された時と，推定する時でDictionaryが変化
     #
